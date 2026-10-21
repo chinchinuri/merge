@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Злиття аналітичних звітів</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#fff; --text:#1c2230; --muted:#5d6678; --line:#dde1e8;
+  --accent:#1f5fbf; --accent-ink:#fff; --warn-bg:#fff4dc; --warn-line:#e7b54a;
+  --crit:#b3261e; --high:#c75b12; --mid:#8a6d00; --low:#3d7a3d; --code:#f0f2f5;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14171d; --panel:#1c2028; --text:#e4e7ee; --muted:#9aa3b5; --line:#2e3440;
+    --accent:#5b9bff; --accent-ink:#0b1220; --warn-bg:#3a2f14; --warn-line:#a67c1f;
+    --crit:#ff7b72; --high:#ffa657; --mid:#e3c45a; --low:#7ee787; --code:#232833;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 20px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.panel h2{font-size:16px;margin:0 0 12px}
+#drop{border:2px dashed var(--line);border-radius:10px;padding:22px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s}
+#drop.over{border-color:var(--accent);color:var(--accent)}
+textarea{width:100%;min-height:120px;font:13px/1.45 ui-monospace,Consolas,monospace;background:var(--code);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:8px;padding:7px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+label.inl{display:flex;gap:6px;align-items:center}
+input[type=text]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);width:130px}
+.files{list-style:none;padding:0;margin:10px 0 0;font-size:13px}
+.files li{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)}
+.files button{padding:1px 8px;font-size:12px}
+.stats{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;color:var(--muted)}
+.stats b{color:var(--text)}
+.warn{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:8px;padding:10px 12px;margin:10px 0;font-size:14px}
+.blocks{list-style:none;margin:0;padding:0}
+.blocks li{display:flex;gap:10px;align-items:flex-start;padding:6px 4px;border-bottom:1px solid var(--line);font-size:14px}
+.blocks li.dup{background:var(--warn-bg)}
+.blocks li.off .t{text-decoration:line-through;color:var(--muted)}
+.blocks .t{flex:1}
+.blocks .n{color:var(--muted);font-size:12px;min-width:26px}
+.lvl{font-size:12px;font-weight:600;white-space:nowrap}
+.lvl.c{color:var(--crit)}.lvl.h{color:var(--high)}.lvl.m{color:var(--mid)}.lvl.l{color:var(--low)}
+.duphint{display:block;font-size:12px;color:var(--muted)}
+details summary{cursor:pointer;font-weight:600}
+#out{min-height:320px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none}
+.toast.on{opacity:1}
+</style>
+</head>
+<body>
+<main>
+<h1>Злиття аналітичних звітів</h1>
+<p class="sub">Об'єднує відповіді моделі (розділи 1–3) в один output.md. Уся обробка відбувається у вашому браузері — текст нікуди не надсилається.</p>
+
+<section class="panel">
+  <h2>1. Вхідні дані</h2>
+  <div id="drop">Перетягніть сюди .md / .txt файли або <u>оберіть їх</u> (можна кілька)</div>
+  <input id="fileInput" type="file" accept=".md,.txt,text/plain,text/markdown" multiple hidden>
+  <ul class="files" id="fileList"></ul>
+  <details style="margin-top:12px">
+    <summary>…або вставити текст вручну</summary>
+    <textarea id="paste" placeholder="Вставте одну або кілька відповідей моделі"></textarea>
+    <div class="row"><button id="addPaste">Додати вставлений текст</button></div>
+  </details>
+</section>
+
+<section class="panel">
+  <h2>2. Параметри</h2>
+  <div class="row">
+    <label class="inl">Дата аналізу <input type="text" id="dAnalysis"></label>
+    <label class="inl">Період моніторингу <input type="text" id="dPeriod"></label>
+  </div>
+  <div class="row">
+    <label class="inl"><input type="checkbox" id="useInputDates"> Брати дати з вхідних файлів, якщо вони там є</label>
+  </div>
+  <div class="row">
+    <label class="inl"><input type="checkbox" id="sortStix"> Сортувати загрози за рівнем STIX (Критичний → Низький)</label>
+  </div>
+  <div class="row">
+    <label class="inl"><input type="checkbox" id="autoDup"> Автоматично вимикати ймовірні дублікати</label>
+  </div>
+</section>
+
+<section class="panel" id="resPanel" hidden>
+  <h2>3. Блоки звіту</h2>
+  <div class="stats" id="stats"></div>
+  <div id="dupWarn"></div>
+  <h3 style="font-size:15px;margin:16px 0 6px">Розділ 2. Загрози та інциденти</h3>
+  <ul class="blocks" id="listThreats"></ul>
+  <h3 style="font-size:15px;margin:16px 0 6px">Розділ 3. Події</h3>
+  <ul class="blocks" id="listEvents"></ul>
+</section>
+
+<section class="panel" id="outPanel" hidden>
+  <h2>4. Результат</h2>
+  <textarea id="out" readonly></textarea>
+  <div class="row">
+    <button class="primary" id="download">Завантажити output.md</button>
+    <button id="copy">Копіювати</button>
+    <label class="inl">Ім'я файлу <input type="text" id="fname" value="output.md" style="width:180px"></label>
+  </div>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+/*CORE-START*/
+const SKIP_PREFIX = ["# АНАЛІТИЧНИЙ ЗВІТ", "# ДОДАТКОВИЙ АНАЛІТИЧНИЙ ЗВІТ"];
+const SKIP_CONTAINS = ["Звіт завершено", "Аналіз повністю завершено", "Звіт повністю сформовано"];
+const DATE_RE = /^\**\s*(Дата аналізу|Період моніторингу|Period моніторингу)\s*:?\**\s*:?\s*(.*)$/i;
+const LEVELS = ["Критичний", "Високий", "Середній", "Низький"];
+const STOP = new Set(["укра","росі","проти","чере","щодо","післ","також","нові","інфо"]);
+
+function detectSection(s){
+  const u = s.toUpperCase();
+  if (!/^#/.test(s)) return null;
+  if (u.includes("1. EXECUTIVE SUMMARY")) return "summary";
+  if (u.includes("2. ВИЯВЛЕНІ ІНФОРМАЦІЙНІ ЗАГРОЗИ")) return "threats";
+  if (u.includes("3. ПОДІЇ, ЩО ВПЛИВАЮТЬ")) return "events";
+  return null;
+}
+
+function parseReport(text){
+  const res = {summary:[], threats:[], events:[], dates:{}};
+  let section = null, cur = null;
+  const flush = () => { if (cur){ const body = cur.lines.join("\n").replace(/\s+$/,""); if (body.trim()) res[cur.section].push(makeBlock(body, cur.section)); cur = null; } };
+  for (const raw of text.replace(/\r\n?/g,"\n").split("\n")){
+    const s = raw.trim();
+    const dm = s.match(DATE_RE);
+    if (dm){ const v = dm[2].replace(/\*/g,"").trim(); if (v){ res.dates[/дата/i.test(dm[1]) ? "analysis" : "period"] = v; } continue; }
+    if (SKIP_PREFIX.some(p => s.startsWith(p)) || s === "---" || SKIP_CONTAINS.some(c => s.includes(c))) continue;
+    const sec = detectSection(s);
+    if (sec){ flush(); section = sec; continue; }
+    if (!section) continue;
+    if (section === "summary"){
+      if (!s && (!res.summary.length || !res.summary[res.summary.length-1].trim())) continue;
+      res.summary.push(raw); continue;
+    }
+    if (/^###\s/.test(s)){ flush(); cur = {section, lines:[raw]}; continue; }
+    if (!cur){ if (!s) continue; cur = {section, lines:[]}; }
+    if (!s && (!cur.lines.length || !cur.lines[cur.lines.length-1].trim())) continue;
+    cur.lines.push(raw);
+  }
+  flush();
+  return res;
+}
+
+function makeBlock(body, section){
+  const first = body.split("\n")[0].trim();
+  const title = /^###\s/.test(first) ? first.replace(/^###\s+/,"") : "(блок без заголовка)";
+  let level = null;
+  const stixLine = body.split("\n").find(l => /STIX/i.test(l) && /Оцінка/i.test(l));
+  if (stixLine){ const m = stixLine.match(/Критичний|Високий|Середній|Низький/i); if (m) level = LEVELS.find(L => L.toLowerCase() === m[0].toLowerCase()); }
+  return {title, body, section, level, stems: stems(title), include:true};
+}
+
+function stems(t){
+  return new Set(t.toLowerCase().replace(/[^a-zа-щьюяґєії0-9'’\s-]/gi," ").split(/[\s-]+/)
+    .filter(w => w.length > 3).map(w => w.slice(0,4)).filter(w => !STOP.has(w)));
+}
+
+function similarity(a, b){
+  if (a.size < 2 || b.size < 2) return 0;
+  let inter = 0; for (const x of a) if (b.has(x)) inter++;
+  return inter / Math.min(a.size, b.size);
+}
+
+function findDuplicates(blocks, thr = 0.5){
+  const pairs = [];
+  for (let i = 0; i < blocks.length; i++)
+    for (let j = 0; j < i; j++){
+      const exact = blocks[i].title.toLowerCase() === blocks[j].title.toLowerCase();
+      const sc = exact ? 1 : similarity(blocks[i].stems, blocks[j].stems);
+      if (sc >= thr) pairs.push({i, j, score: sc});
+    }
+  return pairs;
+}
+
+function buildOutput(summaryLines, threats, events, dA, dP){
+  const sum = summaryLines.join("\n").trim();
+  const join = arr => arr.map(b => b.body.trim()).join("\n\n");
+  return "# АНАЛІТИЧНИЙ ЗВІТ\n\n" +
+    `**Дата аналізу:** ${dA}\n**Період моніторингу:** ${dP}\n\n` +
+    "## 1. EXECUTIVE SUMMARY\n\n" + (sum ? sum + "\n" : "") + "\n\n" +
+    "## 2. ВИЯВЛЕНІ ІНФОРМАЦІЙНІ ЗАГРОЗИ ТА ІНЦИДЕНТИ\n\n" + join(threats) + "\n\n\n" +
+    "## 3. ПОДІЇ, ЩО ВПЛИВАЮТЬ НА БЕЗПЕКОВУ СИТУАЦІЮ\n\n" + join(events) + "\n";
+}
+
+function sortByLevel(arr){
+  const rank = l => l ? LEVELS.indexOf(l) : LEVELS.length;
+  return arr.map((b, k) => [b, k]).sort((x, y) => rank(x[0].level) - rank(y[0].level) || x[1] - y[1]).map(x => x[0]);
+}
+/*CORE-END*/
+
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+const sources = [];          // {name, text}
+let state = null;            // {summary, threats, events, dates}
+
+function fmt(d){ return String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear(); }
+const now = new Date(); const yest = new Date(now); yest.setDate(now.getDate()-1);
+$("dAnalysis").value = fmt(now); $("dPeriod").value = fmt(yest);
+
+function toast(msg){ const t = $("toast"); t.textContent = msg; t.classList.add("on"); setTimeout(() => t.classList.remove("on"), 1600); }
+
+function renderFiles(){
+  $("fileList").innerHTML = "";
+  sources.forEach((s, k) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<span>${k+1}. ${escapeHtml(s.name)} <span style="color:var(--muted)">(${s.text.length.toLocaleString("uk")} симв.)</span></span>`;
+    const b = document.createElement("button"); b.textContent = "Прибрати";
+    b.onclick = () => { sources.splice(k,1); renderFiles(); reparse(); };
+    li.appendChild(b); $("fileList").appendChild(li);
+  });
+}
+
+function escapeHtml(s){ return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function addFiles(list){
+  const files = [...list];
+  Promise.all(files.map(f => f.text().then(text => ({name: f.name, text}))))
+    .then(arr => { arr.forEach(x => sources.push(x)); renderFiles(); reparse(); });
+}
+
+function reparse(){
+  if (!sources.length){ state = null; $("resPanel").hidden = $("outPanel").hidden = true; return; }
+  const all = {summary:[], threats:[], events:[], dates:{}};
+  for (const s of sources){
+    const r = parseReport(s.text);
+    if (r.summary.length){ if (all.summary.length) all.summary.push(""); all.summary.push(...r.summary); }
+    all.threats.push(...r.threats); all.events.push(...r.events);
+    Object.assign(all.dates, Object.fromEntries(Object.entries(r.dates).filter(([k]) => !all.dates[k])));
+  }
+  all.dupT = findDuplicates(all.threats); all.dupE = findDuplicates(all.events);
+  if ($("autoDup").checked){ for (const p of all.dupT) all.threats[p.i].include = false; for (const p of all.dupE) all.events[p.i].include = false; }
+  state = all; render();
+}
+
+function lvlClass(l){ return {"Критичний":"c","Високий":"h","Середній":"m","Низький":"l"}[l] || ""; }
+
+function renderList(el, blocks, pairs){
+  el.innerHTML = "";
+  const dupOf = {}; pairs.forEach(p => { (dupOf[p.i] ||= []).push(p.j); });
+  blocks.forEach((b, k) => {
+    const li = document.createElement("li");
+    if (dupOf[k]) li.classList.add("dup");
+    if (!b.include) li.classList.add("off");
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = b.include;
+    cb.onchange = () => { b.include = cb.checked; render(); };
+    li.appendChild(cb);
+    li.insertAdjacentHTML("beforeend", `<span class="n">${k+1}</span><span class="t">${escapeHtml(b.title)}${dupOf[k] ? `<span class="duphint">Схоже на №${dupOf[k].map(j=>j+1).join(", ")}: «${escapeHtml(blocks[dupOf[k][0]].title)}»</span>` : ""}</span>${b.level ? `<span class="lvl ${lvlClass(b.level)}">${b.level}</span>` : ""}`);
+    el.appendChild(li);
+  });
+}
+
+function render(){
+  const s = state;
+  if ($("useInputDates").checked){ if (s.dates.analysis) $("dAnalysis").value = s.dates.analysis; if (s.dates.period) $("dPeriod").value = s.dates.period; }
+  renderList($("listThreats"), s.threats, s.dupT);
+  renderList($("listEvents"), s.events, s.dupE);
+  const inT = s.threats.filter(b => b.include), inE = s.events.filter(b => b.include);
+  const lv = {}; inT.forEach(b => { if (b.level) lv[b.level] = (lv[b.level]||0)+1; });
+  $("stats").innerHTML = `<span>Джерел: <b>${sources.length}</b></span><span>Загроз: <b>${inT.length}</b> з ${s.threats.length}</span><span>Подій: <b>${inE.length}</b> з ${s.events.length}</span>` +
+    LEVELS.filter(L => lv[L]).map(L => `<span class="lvl ${lvlClass(L)}">${L}: ${lv[L]}</span>`).join("") +
+    (s.summary.length ? `<span>Executive summary: <b>є</b></span>` : `<span>Executive summary: <b>порожній</b></span>`);
+  const nd = s.dupT.length + s.dupE.length;
+  $("dupWarn").innerHTML = nd ? `<div class="warn">Знайдено ${nd} пар(и) блоків зі схожими заголовками (підсвічені). ${$("autoDup").checked ? "Пізніші з них вимкнено автоматично — перевірте й увімкніть, якщо це різні сюжети." : "Перевірте їх і зніміть позначку з зайвих."}</div>` : "";
+  const threats = $("sortStix").checked ? sortByLevel(inT) : inT;
+  $("out").value = buildOutput(s.summary, threats, inE, $("dAnalysis").value.trim(), $("dPeriod").value.trim());
+  $("resPanel").hidden = $("outPanel").hidden = false;
+}
+
+const drop = $("drop");
+drop.onclick = () => $("fileInput").click();
+$("fileInput").onchange = e => { addFiles(e.target.files); e.target.value = ""; };
+["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => addFiles(e.dataTransfer.files));
+$("addPaste").onclick = () => { const t = $("paste").value; if (!t.trim()) return; sources.push({name: "Вставка " + (sources.filter(s=>s.name.startsWith("Вставка")).length+1), text: t}); $("paste").value = ""; renderFiles(); reparse(); };
+["dAnalysis","dPeriod"].forEach(id => $(id).addEventListener("input", () => state && render()));
+["sortStix","useInputDates"].forEach(id => $(id).addEventListener("change", () => state && render()));
+$("autoDup").addEventListener("change", () => reparse());
+$("copy").onclick = () => navigator.clipboard.writeText($("out").value).then(() => toast("Скопійовано"), () => { $("out").select(); document.execCommand("copy"); toast("Скопійовано"); });
+$("download").onclick = () => {
+  const blob = new Blob([$("out").value], {type: "text/markdown;charset=utf-8"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = $("fname").value.trim() || "output.md";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+</script>
+</body>
+</html>
